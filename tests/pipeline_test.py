@@ -39,6 +39,7 @@ from tests import test_shared
 from tests import testutil
 
 from google.appengine.api import mail
+from google.appengine.api import namespace_manager
 from google.appengine.ext import blobstore
 from google.appengine.ext import db
 
@@ -651,6 +652,17 @@ class PipelineTest(TestBase):
         '/_ah/pipeline/callback'
         '?one=red&pipeline_id=banana&three=12345&two=blue',
         result)
+    namespace_manager.set_namespace('test_namespace')
+    stage = AsyncOutputlessPipeline()
+    stage.start(idempotence_key='banana')
+    result = stage.get_callback_url(one='red', two='blue', three=12345)
+    self.assertEquals(
+        '/_ah/pipeline/callback'
+        '?one=red&pipeline_id=banana&pipeline_namespace=test_namespace'
+        '&three=12345&two=blue',
+        result)
+    namespace_manager.set_namespace('')
+
 
   def testGetCallbackTask(self):
     """Tests the get_callback_task method."""
@@ -3002,6 +3014,21 @@ class CallbackHandlerTest(TestBase):
         {'red': u'one', 'blue': u'two'},
         eval(handler.response.out.getvalue()))
     self.assertEquals('text/plain', handler.response.headers['Content-Type'])
+
+def testMultitenancy(self):
+    """Tests callback with a namespace parameter."""
+    namespace_manager.set_namespace('test_namespace')
+    stage = PublicPipeline()
+    stage.start()
+    callback_url = stage.get_callback_url(one='red', two='blue')
+    namespace_manager.set_namespace('')
+    handler = test_shared.create_handler(
+        pipeline._CallbackHandler,
+        'GET', callback_url)
+    handler.get()
+    self.assertEquals((200, 'OK'), handler.response._Response__status)
+    self.assertEqual(namespace_manager.get_namespace(), 'test_namespace')
+    namespace_manager.set_namespace('')
 
 
 class CleanupHandlerTest(test_shared.TaskRunningMixin, TestBase):

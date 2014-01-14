@@ -39,6 +39,7 @@ import time
 import urllib
 import uuid
 
+from google.appengine.api import namespace_manager
 from google.appengine.api import mail
 from google.appengine.api import files
 from google.appengine.api import users
@@ -769,7 +770,7 @@ class Pipeline(object):
 
       status_record.put()
     except Exception, e:
-      raise PipelineRuntimeError('Could not set status for %s#%s: %s' % 
+      raise PipelineRuntimeError('Could not set status for %s#%s: %s' %
           (self, self.pipeline_id, str(e)))
 
   def complete(self, default_output=None):
@@ -805,6 +806,10 @@ class Pipeline(object):
     if not self.async:
       raise UnexpectedPipelineError(
           'May only call get_callback_url() method for asynchronous pipelines.')
+    # Add namespace parameter for multitenancy support.
+    namespace = namespace_manager.get_namespace()
+    if namespace:
+        kwargs['pipeline_namespace'] = namespace
     kwargs['pipeline_id'] = self._pipeline_key.name()
     params = urllib.urlencode(sorted(kwargs.items()))
     return '%s/callback?%s' % (self.base_path, params)
@@ -845,7 +850,7 @@ class Pipeline(object):
     app_id = os.environ['APPLICATION_ID']
     shard_index = app_id.find('~')
     if shard_index != -1:
-      app_id = app_id[shard_index+1:]
+      app_id = app_id[shard_index + 1:]
 
     param_dict = {
         'status': status,
@@ -2537,7 +2542,7 @@ class _FanoutHandler(webapp.RequestHandler):
 
     batch_size = 100  # Limit of taskqueue API bulk add.
     for i in xrange(0, len(all_tasks), batch_size):
-      batch = all_tasks[i:i+batch_size]
+      batch = all_tasks[i:i + batch_size]
       try:
         taskqueue.Queue(context.queue_name).add(batch)
       except (taskqueue.TombstonedTaskError, taskqueue.TaskAlreadyExistsError):
@@ -2594,6 +2599,11 @@ class _CallbackHandler(webapp.RequestHandler):
       logging.error('"pipeline_id" parameter missing.')
       self.response.set_status(400)
       return
+
+    # Set namespace for multitenancy support.
+    namespace = self.request.get('pipeline_namespace', None)
+    if namespace:
+        namespace_manager.set_namespace(namespace)
 
     pipeline_key = db.Key.from_path(_PipelineRecord.kind(), pipeline_id)
     pipeline_record = db.get(pipeline_key)
@@ -2901,7 +2911,7 @@ def get_status_tree(root_pipeline_id):
     raise PipelineStatusError(
         'Could not find pipeline ID "%s"' % root_pipeline_id)
 
-  if (root_pipeline_key != 
+  if (root_pipeline_key !=
       _PipelineRecord.root_pipeline.get_value_for_datastore(
           root_pipeline_record)):
     raise PipelineStatusError(
