@@ -26,8 +26,8 @@ sys.path.insert(0, '../src/')
 
 from pipeline import common
 from pipeline import pipeline
-import test_shared
-from appengine_pipeline.test import testutil
+from tests import test_shared
+from tests import testutil
 
 
 class CommonTest(test_shared.TaskRunningMixin, unittest.TestCase):
